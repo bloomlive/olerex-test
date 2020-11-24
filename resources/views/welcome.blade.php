@@ -30,8 +30,8 @@
         @if($items && count($items))
             @foreach($items as $item)
                 <tr>
-                    <td>
-                        <a class="font-semibold text-color-red" href="{{ route('table.delete', ['shift' => $item->id]) }}">X</a>
+                    <td class="text-center">
+                        <a class="font-semibold text-color-red" href="{{ route('table.delete', ['shift' => $item->id]) }}">✖</a>
                     </td>
                     <td>
                         {{ $item->title }}

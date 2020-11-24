@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', [ShiftController::class, 'index'])->name('table');
-Route::get('/delete/{shift}', [ShiftController::class, 'delete'])->name('table.delete');
+Route::post('/', [ShiftController::class, 'create'])->name('table.post');
 Route::get('/edit/{shift}', [ShiftController::class, 'show'])->name('table.edit');
 Route::post('/edit/{shift}', [ShiftController::class, 'update'])->name('table.update');
-Route::post('/', [ShiftController::class, 'create'])->name('table.post');
+Route::get('/delete/{shift}', [ShiftController::class, 'delete'])->name('table.delete');

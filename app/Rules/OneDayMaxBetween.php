@@ -6,7 +6,7 @@ use DateTimeImmutable;
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Support\Arr;
 
-class TwelveHoursMaxBetween implements Rule
+class OneDayMaxBetween implements Rule
 {
 
     private string $otherField;
@@ -38,7 +38,7 @@ class TwelveHoursMaxBetween implements Rule
 
         $hours = ($periodStart->diff($periodEnd)->h) + (($periodStart->diff($periodEnd)->i) / 60);
 
-        return ($hours >= 12);
+        return ($hours <= 24);
     }
 
     /**
@@ -48,6 +48,6 @@ class TwelveHoursMaxBetween implements Rule
      */
     public function message()
     {
-        return 'Vahetus ei tohi kesta kauem kui 12 tundi.';
+        return 'Vahetus ei tohi kesta kauem kui 24 tundi.';
     }
 }

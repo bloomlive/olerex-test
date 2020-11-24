@@ -3,27 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Period;
-use App\Rules\TwelveHoursMaxBetween;
+use App\Rules\OneDayMaxBetween;
 use App\Shift;
 use App\ShiftProportion;
 use DateInterval;
-use DateTimeImmutable;
 use Illuminate\Http\Request;
+use Spatie\Period\PeriodCollection;
 use Spatie\Period\Precision;
 
 class ShiftController extends Controller
 {
 
-    private Period $dayPeriod;
-    private Period $nightPeriod;
+    private PeriodCollection $dayPeriods;
+    private PeriodCollection $nightPeriods;
 
     /**
      * ShiftController constructor.
      */
     public function __construct()
     {
-        $this->dayPeriod   = $this->makeDayPeriod();
-        $this->nightPeriod = $this->makeNightPeriod();
+        $this->dayPeriods   = $this->makeDayPeriods();
+        $this->nightPeriods = $this->makeNightPeriods();
     }
 
     public function index()
@@ -40,7 +40,7 @@ class ShiftController extends Controller
 
     public function create(Request $request)
     {
-        $data = $this->prepareDataForTransaction($request);
+        $data       = $this->prepareDataForTransaction($request);
         $proportion = $this->createOrFindProportion($data);
 
         Shift::create(
@@ -53,6 +53,48 @@ class ShiftController extends Controller
         );
 
         return redirect()->back()->with('message', sprintf('%s tabelisse lisatud.', $data['title']));
+    }
+
+    private function prepareDataForTransaction(Request $request): array
+    {
+        $data = $request->validate(
+            [
+                'title' => 'required|max:255',
+                'start' => 'required',
+                'end'   => ['required', new OneDayMaxBetween('start', $request->only('start'))],
+            ]
+        );
+
+        $timeData = $this->getDayNight($data['start'], $data['end']);
+
+        return array_merge($data, $timeData);
+    }
+
+    private function getDayNight($start, $end): array
+    {
+        $periodStart = \DateTime::createFromFormat('G:i', $start);
+        $periodEnd   = \DateTime::createFromFormat('G:i', $end);
+
+        $oneDay = DateInterval::createFromDateString('+1 day');
+
+        if ($periodStart->diff($periodEnd)->invert) {
+            $periodEnd = $periodEnd->add($oneDay);
+        }
+
+        if ($periodStart == $periodEnd) {
+            $periodEnd->add($oneDay);
+        }
+
+        $period = Period::make(
+            $periodStart,
+            $periodEnd,
+            Precision::MINUTE
+        );
+
+        $data['day']   = $this->getOverlap($this->dayPeriods, $period);
+        $data['night'] = $this->getOverlap($this->nightPeriods, $period);
+
+        return $data;
     }
 
     public function update(Shift $shift, Request $request)
@@ -68,8 +110,6 @@ class ShiftController extends Controller
 
         $shift->save();
 
-        $items = Shift::all();
-
         return redirect()->to(route('table'));
     }
 
@@ -80,7 +120,21 @@ class ShiftController extends Controller
         return redirect()->to(route('table'));
     }
 
-    private function createOrFindProportion($data) {
+    private function getOverlap(PeriodCollection $collection, Period $period)
+    {
+        $returnValue = 0;
+
+        foreach ($collection as $item) {
+            if ($period->overlapSingle($item) !== null) {
+                $returnValue += $period->overlapSingle($item)->lengthInMinutes();
+            }
+        }
+
+        return $returnValue;
+    }
+
+    private function createOrFindProportion($data): ShiftProportion
+    {
         return $proportion = ShiftProportion::firstOrCreate(
             [
                 'day'   => $data['day'],
@@ -89,64 +143,36 @@ class ShiftController extends Controller
         );
     }
 
-    private function getDayNight($start, $end)
+
+    private function makeDayPeriods(): PeriodCollection
     {
-        $periodStart = DateTimeImmutable::createFromFormat('G:i', $start);
-        $periodEnd   = DateTimeImmutable::createFromFormat('G:i', $end);
-
-        if ($periodStart->diff($periodEnd)->invert) {
-            $periodEnd = $periodEnd->add(DateInterval::createFromDateString('+1 day'));
-        }
-
-        $period = Period::make(
-            $periodStart,
-            $periodEnd,
-            Precision::MINUTE
-        );
-
-        $data['day']   = 0;
-        $data['night'] = 0;
-
-        if ($period->overlap($this->dayPeriod)->count() > 0 && ($period->overlap($this->dayPeriod)[0]->lengthInMinutes() >= 1)) {
-            $data['day'] = $period->overlap($this->dayPeriod)[0]->lengthInMinutes();
-        }
-
-        if ($period->overlap($this->nightPeriod)->count() > 0 && ($period->overlap($this->nightPeriod)[0]->lengthInMinutes() >= 1)) {
-            $data['night'] = $period->overlap($this->nightPeriod)[0]->lengthInMinutes();
-        }
-
-        return $data;
-    }
-
-    private function prepareDataForTransaction(Request $request) {
-        $data = $request->validate(
-            [
-                'title' => 'required|max:255',
-                'start' => 'required',
-                'end'   => ['required', new TwelveHoursMaxBetween('start', $request->only('start'))],
-            ]
-        );
-
-        $timeData = $this->getDayNight($data['start'], $data['end']);
-
-        return array_merge($data, $timeData);
-    }
-
-    private function makeDayPeriod(): Period
-    {
-        return Period::make(
-            DateTimeImmutable::createFromFormat('G:i', Shift::DAY_HOURS_START),
-            DateTimeImmutable::createFromFormat('G:i', Shift::DAY_HOURS_END),
-            Precision::MINUTE
+        return new PeriodCollection(
+            Period::make(
+                \DateTime::createFromFormat('G:i', Shift::DAY_HOURS_START),
+                \DateTime::createFromFormat('G:i', Shift::DAY_HOURS_END),
+                Precision::MINUTE
+            ),
+            Period::make(
+                \DateTime::createFromFormat('G:i', Shift::DAY_HOURS_START)->add(DateInterval::createFromDateString('1 day')),
+                \DateTime::createFromFormat('G:i', Shift::DAY_HOURS_END)->add(DateInterval::createFromDateString('1 day')),
+                Precision::MINUTE
+            )
         );
     }
 
-    private function makeNightPeriod(): Period
+    private function makeNightPeriods(): PeriodCollection
     {
-        return Period::make(
-            DateTimeImmutable::createFromFormat('G:i', Shift::NIGHT_HOURS_START),
-            DateTimeImmutable::createFromFormat('G:i', Shift::NIGHT_HOURS_END)->add(DateInterval::createFromDateString('+1 day')),
-            Precision::MINUTE
+        return new PeriodCollection(
+            Period::make(
+                \DateTime::createFromFormat('G:i', Shift::NIGHT_HOURS_START)->sub(DateInterval::createFromDateString('1 day')),
+                \DateTime::createFromFormat('G:i', Shift::NIGHT_HOURS_END),
+                Precision::MINUTE
+            ),
+            Period::make(
+                \DateTime::createFromFormat('G:i', Shift::NIGHT_HOURS_START),
+                \DateTime::createFromFormat('G:i', Shift::NIGHT_HOURS_END)->add(DateInterval::createFromDateString('1 day')),
+                Precision::MINUTE
+            )
         );
     }
 
