@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ShiftController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', [ShiftController::class, 'index'])->name('table');
+Route::get('/delete/{shift}', [ShiftController::class, 'delete'])->name('table.delete');
+Route::get('/edit/{shift}', [ShiftController::class, 'show'])->name('table.edit');
+Route::post('/edit/{shift}', [ShiftController::class, 'update'])->name('table.update');
+Route::post('/', [ShiftController::class, 'create'])->name('table.post');
